@@ -85,7 +85,7 @@ def train_model(seed, torso_mass):
     )
 
     '''
-
+    '''
     model = PPO("MlpPolicy", env, verbose=1,
                 batch_size=32,  # Batch size
                 n_steps=512,    # Buffer size, set via the number of steps to run for each environment per update
@@ -96,6 +96,9 @@ def train_model(seed, torso_mass):
                 clip_range= linear_schedule(0.4), # past value 0.2
                 gamma=0.999
     )
+    '''
+    # PPO model instantiation with default parameters
+    model = PPO("MlpPolicy", env, verbose=1)
 
     model.set_logger(new_logger)
 
@@ -112,8 +115,8 @@ def train_model(seed, torso_mass):
     env.close()
 
 def main():
-    seeds = [1]
-    torso_masses = [3]
+    seeds = [1, 2, 3, 4, 5,]
+    torso_masses = [3, 6, 9]
     
     # Perform training with different combinations of seeds and torso weights
     for seed in seeds:
