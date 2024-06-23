@@ -2,14 +2,10 @@ import gymnasium as gym
 from stable_baselines3 import PPO
 import matplotlib.pyplot as plt
 import numpy as np
-import gymnasium as gym
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3 import PPO
+from stable_baselines3.common.evaluation import evaluate_policy
 from scipy.stats import sem
-from stable_baselines3.common.logger import configure
-from typing import Callable
-import torch
 
 # Define seeds and masses used for training and testing
 seeds = [1, 2, 3, 4, 5]
@@ -30,17 +26,8 @@ class ChangeMassWrapper(gym.Wrapper):
         self.update_mass()
 
 def evaluate_model(model, env, num_episodes=10):
-    rewards = []
-    for _ in range(num_episodes):
-        obs = env.reset()
-        done = False
-        total_reward = 0
-        while not done:
-            action, _states = model.predict(obs, deterministic=True)
-            obs, reward, done, info = env.step(action)
-            total_reward += reward
-        rewards.append(total_reward)
-    return np.mean(rewards)
+    mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=num_episodes, return_episode_rewards=False)
+    return mean_reward, std_reward
 
 def test_models(seeds, masses, test_masses):
     results = {}
@@ -56,9 +43,9 @@ def test_models(seeds, masses, test_masses):
             model_results = []
             for test_mass in test_masses:
                 env.env_method("set_mass", test_mass)
-                avg_reward = evaluate_model(model, env)
-                model_results.append(avg_reward)
-                print(f"Seed {seed}, Train Mass {mass}, Test Mass {test_mass}: Avg Reward = {avg_reward}")
+                mean_reward, std_reward = evaluate_model(model, env)
+                model_results.append((mean_reward, std_reward))
+                print(f"Seed {seed}, Train Mass {mass}, Test Mass {test_mass}: Mean Reward = {mean_reward}, Std Reward = {std_reward}")
 
             results[(seed, mass)] = model_results
 
@@ -67,7 +54,7 @@ def test_models(seeds, masses, test_masses):
 # Test the models
 results = test_models(seeds, training_masses, test_masses)
 
-# save the results
+# Save the results
 np.save("ppo_hopper_results.npy", results)
 
 def plot_results(results, test_masses, training_masses):
@@ -88,14 +75,15 @@ def plot_results(results, test_masses, training_masses):
         
         # Calculate mean and confidence interval for each test mass
         for test_mass in test_masses:
-            all_rewards = [rewards[test_masses.index(test_mass)] for _, rewards in mass_results.items()]
+            all_rewards = [rewards[test_masses.index(test_mass)][0] for _, rewards in mass_results.items()]
+            all_stds = [rewards[test_masses.index(test_mass)][1] for _, rewards in mass_results.items()]
             mean_rewards = np.mean(all_rewards)
-            error = sem(all_rewards)
+            mean_std = np.mean(all_stds)
             
             # Collect the data
             mean_values.append(mean_rewards)
-            upper_bounds.append(mean_rewards + error)
-            lower_bounds.append(mean_rewards - error)
+            upper_bounds.append(mean_rewards + mean_std)
+            lower_bounds.append(mean_rewards - mean_std)
         
         # Plotting the mean, upper, and lower bounds
         test_mass_indices = np.arange(len(test_masses))
@@ -109,7 +97,11 @@ def plot_results(results, test_masses, training_masses):
         ax.set_xticks(test_mass_indices)
         ax.set_xticklabels(test_masses)
         ax.set_xlabel('Torso Mass')
-        ax.set_ylabel('Average Reward')
+        
+        # Only set the y-label on the first subplot
+        if ax == axes[0]:
+            ax.set_ylabel('Performance')
+        
         ax.grid(True)
         
         # Add legend to each subplot with custom positions
